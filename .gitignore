@@ -1,0 +1,30 @@
+.idea/
+venv/
+
+# Legacy prototype not included in the main repo
+frontend/
+
+# Python
+__pycache__/
+*.py[cod]
+*.sqlite3
+
+# Backend runtime artifacts
+*.log
+backend/*.log
+backend/**/*.log
+backend/**/__pycache__/
+
+# Node / Expo
+**/node_modules/
+**/.expo/
+**/dist/
+**/web-build/
+**/.metro-health-check*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
+.env
+.env.*

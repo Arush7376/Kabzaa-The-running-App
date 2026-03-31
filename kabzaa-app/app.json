@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "KABZAA",
+    "slug": "kabzaa-running-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#07080d"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "KABZAA needs your location to track runs and capture territory on the map.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "KABZAA uses your location while you run to record your route."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#07080d"
+      },
+      "edgeToEdgeEnabled": true,
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow KABZAA to use your location to track your run and capture territory.",
+          "locationWhenInUsePermission": "Allow KABZAA to use your location while using the app."
+        }
+      ]
+    ],
+    "extra": {
+      "apiUrl": "https://wicked-sheep-show.loca.lt"
+    }
+  }
+}
