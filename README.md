@@ -1,32 +1,41 @@
 # KABZAA
 
-KABZAA is a running app with territory capture mechanics. The repository contains an Expo React Native client and a Django REST backend for authentication, run tracking, leaderboard data, and tile ownership.
+KABZAA is a territory-capture running app. Players move through the real world, record GPS runs, and convert location updates into owned map tiles. This repository contains a Django REST backend plus Expo React Native clients for the gameplay and UI experiments.
+
+## What the app does
+
+- Tracks active runs with live GPS updates
+- Draws the runner path on the map in real time
+- Captures territory tiles as the user moves
+- Supports signup, login, profile, history, and leaderboard flows
+- Shows a live map marker with a pseudo-3D humanoid runner avatar in the prototype client
 
 ## Repository layout
 
-- `kabzaa-app/`: main Expo React Native application.
-- `backend/`: Django REST API and SQLite-backed development server.
-- `frontend/`: earlier prototype, excluded from the main repository.
+- `backend/`: Django REST API, auth, run sessions, location points, tile ownership, and local SQLite development setup
+- `frontend/`: Expo React Native prototype focused on the live run experience, map rendering, tile feedback, and the humanoid runner marker
+- `kabzaa-app/`: separate Expo React Native app workspace for the broader product flow
 
-## Main features
+## Current UX highlights
 
-- User signup and login
-- GPS-based run tracking
-- Territory capture using map tiles
-- Run history and profile data
-- Leaderboard and territory views
+- Live route polyline while a run is active
+- Dark map presentation for active gameplay
+- Tile badge overlay showing the latest captured territory index
+- Animated humanoid runner marker that bobs, strides, glows, and rotates with the direction of travel
+- Web fallback screen for map previews when native maps are unavailable
 
 ## Tech stack
 
-- Frontend: Expo, React Native, React Navigation, Axios
-- Backend: Django, Django REST Framework, token auth
+- Mobile clients: Expo, React Native, React Navigation, React Native Maps
+- Backend: Django, Django REST Framework, token authentication
+- Location: Expo Location
 - Storage: SQLite for local development
 
 ## Getting started
 
-### 1. Run the backend
+### 1. Start the backend
 
-Open a terminal in `backend/` and run:
+Run the API from `backend/`:
 
 ```bash
 pip install -r requirements.txt
@@ -34,20 +43,29 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-The development API runs at `http://127.0.0.1:8000`.
+The backend is available at `http://127.0.0.1:8000`.
 
-### 2. Run the mobile app
+### 2. Start the prototype mobile client
 
-Open a second terminal in `kabzaa-app/` and run:
+Run the prototype client from `frontend/`:
 
 ```bash
 npm install
 npm start
 ```
 
-Expo will open the project in Expo Go, Android, iOS, or web depending on your environment.
+Use Expo Go or an emulator to open the app on Android or iOS. Web can be used for previewing layout and fallback behavior.
 
-### 3. Configure the API URL
+### 3. Start the app workspace
+
+If you want to work on the parallel app workspace, run from `kabzaa-app/`:
+
+```bash
+npm install
+npm start
+```
+
+### 4. Configure the API URL
 
 The mobile app resolves the API URL in this order:
 
@@ -56,11 +74,11 @@ The mobile app resolves the API URL in this order:
 3. The Expo host machine IP
 4. Local defaults such as `http://127.0.0.1:8000`
 
-If you are testing on a physical device, set `EXPO_PUBLIC_API_URL` to a reachable backend host.
+If you are testing on a physical device, set `EXPO_PUBLIC_API_URL` to a backend host reachable from that device.
 
-## API overview
+## Gameplay/API flow
 
-Core endpoints exposed by the backend include:
+Core backend endpoints include:
 
 - `POST /api/auth/register/`
 - `POST /api/auth/login/`
@@ -72,7 +90,16 @@ Core endpoints exposed by the backend include:
 - `GET /api/territory/`
 - `GET /api/leaderboard/`
 
-## Notes
+Typical active run flow:
 
-- This repository is organized around the current app in `kabzaa-app/`.
-- Development artifacts such as logs, `node_modules`, Expo output, virtual environments, and SQLite files are ignored.
+1. Start a run session.
+2. Stream GPS points from the device.
+3. Send location updates to the backend on an interval.
+4. Convert coordinates into territory tile captures.
+5. End the run and persist the session summary.
+
+## Development notes
+
+- `frontend/` currently contains the most visible map/avatar UX work.
+- `backend/BACKEND_WORKFLOW.md` documents the backend flow and data model in more detail.
+- Development artifacts such as logs, `node_modules`, Expo output, virtual environments, and SQLite files are ignored where appropriate.
