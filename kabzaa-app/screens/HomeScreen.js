@@ -96,9 +96,12 @@ export default function HomeScreen({ navigation }) {
         { label: 'Rank', value: profile.rank, tone: 'accent' },
         { label: 'XP', value: `${profile.xp}`, tone: 'default' },
         { label: 'Tiles', value: `${profile.totals.total_tiles}`, tone: 'default' },
-        { label: 'Runs', value: `${profile.totals.total_runs}`, tone: 'default' },
+        { label: 'Board', value: `#${profile.leaderboard_position || '--'}`, tone: 'default' },
+        { label: 'Streak', value: `${profile.totals.streak_days || 0}d`, tone: 'default' },
       ]
     : [];
+
+  const primaryChallenge = profile?.challenges?.[0] || null;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -163,13 +166,44 @@ export default function HomeScreen({ navigation }) {
             </Text>
           </View>
           <View style={styles.directivePanel}>
-            <Text style={styles.directiveLabel}>Today&apos;s directive</Text>
-            <Text style={styles.directiveTitle}>Capture 3 fresh tiles</Text>
-            <Text style={styles.directiveBody}>
-              Use a short live run to keep momentum and climb the district board.
+            <Text style={styles.directiveLabel}>Today's directive</Text>
+            <Text style={styles.directiveTitle}>
+              {primaryChallenge ? primaryChallenge.title : 'Capture fresh tiles'}
             </Text>
+            <Text style={styles.directiveBody}>
+              {primaryChallenge
+                ? `${primaryChallenge.current} / ${primaryChallenge.target} ${primaryChallenge.unit} complete.`
+                : 'Use a short live run to keep momentum and climb the district board.'}
+            </Text>
+            <View style={styles.directiveTrack}>
+              <View
+                style={[
+                  styles.directiveFill,
+                  { width: `${Math.max(8, (primaryChallenge?.progress || 0) * 100)}%` },
+                ]}
+              />
+            </View>
           </View>
         </View>
+
+        {profile && (
+          <View style={styles.commandGrid}>
+            <View style={styles.commandCard}>
+              <Text style={styles.commandLabel}>Weekly push</Text>
+              <Text style={styles.commandValue}>
+                {(profile.totals.weekly_distance / 1000).toFixed(1)} km
+              </Text>
+              <Text style={styles.commandBody}>{profile.totals.weekly_runs} runs logged this week</Text>
+            </View>
+            <View style={styles.commandCard}>
+              <Text style={styles.commandLabel}>Best signal</Text>
+              <Text style={styles.commandValue}>
+                {(profile.totals.longest_run / 1000).toFixed(1)} km
+              </Text>
+              <Text style={styles.commandBody}>Longest completed run in your archive</Text>
+            </View>
+          </View>
+        )}
 
         <View style={styles.featureGrid}>
           <FeatureCard
@@ -338,6 +372,27 @@ const styles = StyleSheet.create({
   directiveLabel: { color: COLORS.warning, fontSize: 10, fontWeight: '800', letterSpacing: 1.8 },
   directiveTitle: { color: COLORS.text, fontSize: 22, fontWeight: '900', marginTop: 10 },
   directiveBody: { color: COLORS.muted, fontSize: 13, lineHeight: 20, marginTop: 8 },
+  directiveTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(40, 55, 75, 0.85)',
+    marginTop: 14,
+    overflow: 'hidden',
+  },
+  directiveFill: { height: '100%', borderRadius: 999, backgroundColor: COLORS.warning },
+  commandGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
+  commandCard: {
+    minWidth: 170,
+    flexGrow: 1,
+    backgroundColor: 'rgba(10, 14, 22, 0.74)',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 18,
+  },
+  commandLabel: { color: COLORS.secondary, fontSize: 10, fontWeight: '800', letterSpacing: 1.6 },
+  commandValue: { color: COLORS.text, fontSize: 26, fontWeight: '900', marginTop: 8 },
+  commandBody: { color: COLORS.muted, fontSize: 13, lineHeight: 19, marginTop: 8 },
   featureGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   featureCard: {
     minWidth: 160,

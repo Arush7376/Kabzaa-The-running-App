@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import Count, Sum
+from django.db.models import Count, Max, Sum
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -38,16 +38,62 @@ def get_rank_from_xp(xp):
     return "Rookie Raider"
 
 
+def get_time_windows():
+    now = timezone.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - timedelta(days=today_start.weekday())
+    return today_start, week_start
+
+
+def get_user_streak_days(user):
+    run_dates = (
+        RunSession.objects.filter(user=user, end_time__isnull=False)
+        .order_by("-start_time")
+        .values_list("start_time", flat=True)
+    )
+    unique_dates = []
+    for started_at in run_dates:
+        local_day = timezone.localtime(started_at).date()
+        if not unique_dates or unique_dates[-1] != local_day:
+            unique_dates.append(local_day)
+
+    if not unique_dates:
+        return 0
+
+    today = timezone.localdate()
+    expected_day = today if unique_dates[0] == today else today - timedelta(days=1)
+    streak = 0
+    for run_day in unique_dates:
+        if run_day == expected_day:
+            streak += 1
+            expected_day -= timedelta(days=1)
+        elif run_day < expected_day:
+            break
+
+    return streak
+
+
 def get_user_totals(user):
     sessions = RunSession.objects.filter(user=user)
     total_distance = sessions.aggregate(total=Sum("distance")).get("total") or 0.0
     total_runs = sessions.count()
     total_tiles = Tile.objects.filter(owner=user).count()
+    longest_run = sessions.aggregate(best=Max("distance")).get("best") or 0.0
+    _, week_start = get_time_windows()
+    weekly_distance = (
+        sessions.filter(start_time__gte=week_start).aggregate(total=Sum("distance")).get("total")
+        or 0.0
+    )
+    weekly_runs = sessions.filter(start_time__gte=week_start).count()
     xp = int(total_distance / 80) + total_tiles * 25 + total_runs * 40
     return {
         "total_distance": round(total_distance, 2),
         "total_runs": total_runs,
         "total_tiles": total_tiles,
+        "longest_run": round(longest_run, 2),
+        "weekly_distance": round(weekly_distance, 2),
+        "weekly_runs": weekly_runs,
+        "streak_days": get_user_streak_days(user),
         "xp": xp,
         "rank": get_rank_from_xp(xp),
     }
@@ -82,6 +128,18 @@ def build_achievements(user, totals=None):
             "description": "Reach 800 XP.",
             "unlocked": totals["xp"] >= 800,
         },
+        {
+            "id": "streak_3",
+            "title": "Heat Streak",
+            "description": "Run across 3 consecutive days.",
+            "unlocked": totals["streak_days"] >= 3,
+        },
+        {
+            "id": "long_run_5k",
+            "title": "Long Signal",
+            "description": "Complete a single 5 km run.",
+            "unlocked": totals["longest_run"] >= 5000,
+        },
     ]
     return achievements
 
@@ -90,9 +148,7 @@ def build_challenges(user, totals=None):
     if totals is None:
         totals = get_user_totals(user)
 
-    now = timezone.now()
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start = today_start - timedelta(days=today_start.weekday())
+    today_start, week_start = get_time_windows()
 
     today_sessions = RunSession.objects.filter(user=user, start_time__gte=today_start)
     today_distance = today_sessions.aggregate(total=Sum("distance")).get("total") or 0.0
@@ -118,6 +174,15 @@ def build_challenges(user, totals=None):
             "unit": "runs",
         },
         {
+            "id": "weekly_distance",
+            "title": "Raid Week",
+            "description": "Bank 12 km this week.",
+            "progress": min(round(totals["weekly_distance"] / 12000, 2), 1),
+            "current": round(totals["weekly_distance"] / 1000, 2),
+            "target": 12,
+            "unit": "km",
+        },
+        {
             "id": "tile_capture",
             "title": "Sector Grab",
             "description": "Own 12 total tiles.",
@@ -125,6 +190,15 @@ def build_challenges(user, totals=None):
             "current": totals["total_tiles"],
             "target": 12,
             "unit": "tiles",
+        },
+        {
+            "id": "streak_3",
+            "title": "Heat Streak",
+            "description": "Log runs across 3 consecutive days.",
+            "progress": min(round(totals["streak_days"] / 3, 2), 1),
+            "current": totals["streak_days"],
+            "target": 3,
+            "unit": "days",
         },
     ]
 
@@ -291,6 +365,15 @@ def end_run(request):
 def profile(request):
     totals = get_user_totals(request.user)
     recent_sessions = RunSession.objects.filter(user=request.user).order_by("-start_time")[:8]
+    all_entries = build_leaderboard_entries()
+    leaderboard_position = next(
+        (
+            index + 1
+            for index, entry in enumerate(all_entries)
+            if entry["username"] == request.user.username
+        ),
+        None,
+    )
 
     return Response(
         {
@@ -298,6 +381,7 @@ def profile(request):
             "rank": totals["rank"],
             "xp": totals["xp"],
             "totals": totals,
+            "leaderboard_position": leaderboard_position,
             "achievements": build_achievements(request.user, totals),
             "challenges": build_challenges(request.user, totals),
             "recent_runs": [serialize_session(session) for session in recent_sessions],
@@ -345,7 +429,7 @@ def territory_overview(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def leaderboard(request):
+def build_leaderboard_entries():
     users = User.objects.all()
     entries = []
     for user in users:
@@ -356,13 +440,53 @@ def leaderboard(request):
                 "rank": totals["rank"],
                 "xp": totals["xp"],
                 "distance_meters": totals["total_distance"],
+                "weekly_distance_meters": totals["weekly_distance"],
                 "runs": totals["total_runs"],
+                "weekly_runs": totals["weekly_runs"],
                 "tiles": totals["total_tiles"],
+                "streak_days": totals["streak_days"],
+                "longest_run_meters": totals["longest_run"],
             }
         )
 
     entries.sort(key=lambda item: (-item["xp"], -item["tiles"], -item["distance_meters"]))
-    return Response({"results": entries[:20]})
+    return entries
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def leaderboard(request):
+    entries = build_leaderboard_entries()
+    current_position = next(
+        (
+            index + 1
+            for index, entry in enumerate(entries)
+            if entry["username"] == request.user.username
+        ),
+        None,
+    )
+    leaders = entries[:20]
+    total_distance = sum(item["distance_meters"] for item in entries)
+    total_tiles = sum(item["tiles"] for item in entries)
+
+    return Response(
+        {
+            "results": leaders,
+            "current_user": request.user.username,
+            "current_position": current_position,
+            "season": {
+                "players": len(entries),
+                "total_distance_meters": round(total_distance, 2),
+                "total_tiles": total_tiles,
+                "top_score": leaders[0]["xp"] if leaders else 0,
+            },
+            "rivals": [
+                entry
+                for entry in entries
+                if entry["username"] != request.user.username
+            ][:3],
+        }
+    )
 
 
 @api_view(["GET"])

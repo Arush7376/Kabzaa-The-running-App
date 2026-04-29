@@ -1,10 +1,11 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -20,11 +21,38 @@ const COLORS = {
   muted: '#90a5c0',
   accent: '#63f98d',
   secondary: '#69c6ff',
+  warning: '#ffd66b',
   bronze: '#d8a06f',
 };
 
 function formatDistance(distanceMeters) {
   return `${(distanceMeters / 1000).toFixed(1)} km`;
+}
+
+function scoreForMode(item, mode) {
+  if (mode === 'tiles') {
+    return item.tiles || 0;
+  }
+  if (mode === 'distance') {
+    return item.distance_meters || 0;
+  }
+  if (mode === 'weekly') {
+    return item.weekly_distance_meters || 0;
+  }
+  return item.xp || 0;
+}
+
+function labelForMode(item, mode) {
+  if (mode === 'tiles') {
+    return `${item.tiles || 0} tiles`;
+  }
+  if (mode === 'distance') {
+    return formatDistance(item.distance_meters || 0);
+  }
+  if (mode === 'weekly') {
+    return `${formatDistance(item.weekly_distance_meters || 0)} this week`;
+  }
+  return `${item.xp || 0} XP`;
 }
 
 function PodiumCard({ place, item }) {
@@ -37,6 +65,29 @@ function PodiumCard({ place, item }) {
       <Text style={styles.podiumName}>{item?.username || '---'}</Text>
       <Text style={styles.podiumMeta}>{item?.rank || 'No data'}</Text>
       <Text style={[styles.podiumScore, { color: tone }]}>{item?.xp || 0} XP</Text>
+    </View>
+  );
+}
+
+function ModeButton({ active, label, onPress }) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      style={[styles.modeButton, active ? styles.modeButtonActive : null]}
+    >
+      <Text style={[styles.modeButtonText, active ? styles.modeButtonTextActive : null]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function SeasonTile({ label, value }) {
+  return (
+    <View style={styles.seasonTile}>
+      <Text style={styles.seasonTileLabel}>{label}</Text>
+      <Text style={styles.seasonTileValue}>{value}</Text>
     </View>
   );
 }
@@ -54,6 +105,11 @@ export default function LeaderboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [board, setBoard] = useState([]);
   const [challenges, setChallenges] = useState([]);
+  const [season, setSeason] = useState(null);
+  const [rivals, setRivals] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [currentPosition, setCurrentPosition] = useState(null);
+  const [mode, setMode] = useState('xp');
 
   const loadData = useCallback(async () => {
     const [leaderboard, challengeData] = await Promise.all([
@@ -61,6 +117,10 @@ export default function LeaderboardScreen() {
       api.fetchChallenges(),
     ]);
     setBoard(leaderboard.results || []);
+    setSeason(leaderboard.season || null);
+    setRivals(leaderboard.rivals || []);
+    setCurrentUser(leaderboard.current_user || null);
+    setCurrentPosition(leaderboard.current_position || null);
     setChallenges(challengeData.challenges || []);
   }, []);
 
@@ -91,6 +151,15 @@ export default function LeaderboardScreen() {
     }
   }, [loadData]);
 
+  const visibleBoard = useMemo(() => {
+    return [...board].sort((a, b) => scoreForMode(b, mode) - scoreForMode(a, mode));
+  }, [board, mode]);
+
+  const currentPlayer = useMemo(
+    () => board.find((item) => item.username === currentUser) || null,
+    [board, currentUser],
+  );
+
   if (loading && !board.length) {
     return (
       <View style={styles.loadingWrap}>
@@ -116,24 +185,74 @@ export default function LeaderboardScreen() {
           </Text>
         </View>
 
-        <View style={styles.podiumRow}>
-          <PodiumCard item={board[0]} place={1} />
-          <PodiumCard item={board[1]} place={2} />
-          <PodiumCard item={board[2]} place={3} />
+        <View style={styles.seasonGrid}>
+          <SeasonTile label="Players" value={`${season?.players || board.length}`} />
+          <SeasonTile
+            label="Map Distance"
+            value={formatDistance(season?.total_distance_meters || 0)}
+          />
+          <SeasonTile label="Tiles Held" value={`${season?.total_tiles || 0}`} />
+          <SeasonTile label="Top Score" value={`${season?.top_score || 0} XP`} />
         </View>
+
+        {currentPlayer && (
+          <View style={styles.playerSpotlight}>
+            <View>
+              <Text style={styles.spotlightLabel}>Your board position</Text>
+              <Text style={styles.spotlightTitle}>#{currentPosition || '--'} {currentPlayer.username}</Text>
+              <Text style={styles.spotlightMeta}>
+                {currentPlayer.rank} | {currentPlayer.streak_days || 0} day streak |{' '}
+                {formatDistance(currentPlayer.weekly_distance_meters || 0)} this week
+              </Text>
+            </View>
+            <Text style={styles.spotlightScore}>{currentPlayer.xp} XP</Text>
+          </View>
+        )}
+
+        <View style={styles.modeRail}>
+          <ModeButton active={mode === 'xp'} label="XP" onPress={() => setMode('xp')} />
+          <ModeButton active={mode === 'tiles'} label="Tiles" onPress={() => setMode('tiles')} />
+          <ModeButton active={mode === 'distance'} label="Distance" onPress={() => setMode('distance')} />
+          <ModeButton active={mode === 'weekly'} label="Weekly" onPress={() => setMode('weekly')} />
+        </View>
+
+        <View style={styles.podiumRow}>
+          <PodiumCard item={visibleBoard[0]} place={1} />
+          <PodiumCard item={visibleBoard[1]} place={2} />
+          <PodiumCard item={visibleBoard[2]} place={3} />
+        </View>
+
+        {!!rivals.length && (
+          <View style={styles.panel}>
+            <Text style={styles.panelTitle}>Rivals to chase</Text>
+            {rivals.map((item, index) => (
+              <View key={`${item.username}-rival-${index}`} style={styles.rivalRow}>
+                <View style={styles.rivalPulse} />
+                <View style={styles.entryText}>
+                  <Text style={styles.entryName}>{item.username}</Text>
+                  <Text style={styles.entryMeta}>
+                    {item.rank} | {item.tiles} tiles | {item.streak_days || 0} day streak
+                  </Text>
+                </View>
+                <Text style={styles.entryXp}>{item.xp} XP</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         <View style={styles.panel}>
           <Text style={styles.panelTitle}>Full standings</Text>
-          {board.map((item, index) => (
+          {visibleBoard.map((item, index) => (
             <View key={`${item.username}-${index}`} style={styles.entryRow}>
               <Text style={styles.entryRank}>#{index + 1}</Text>
               <View style={styles.entryText}>
                 <Text style={styles.entryName}>{item.username}</Text>
                 <Text style={styles.entryMeta}>
-                  {item.rank} | {item.tiles} tiles | {formatDistance(item.distance_meters)}
+                  {item.rank} | {item.tiles} tiles | {formatDistance(item.distance_meters)} |{' '}
+                  {item.weekly_runs || 0} weekly runs
                 </Text>
               </View>
-              <Text style={styles.entryXp}>{item.xp} XP</Text>
+              <Text style={styles.entryXp}>{labelForMode(item, mode)}</Text>
             </View>
           ))}
         </View>
@@ -190,6 +309,54 @@ const styles = StyleSheet.create({
   podiumName: { color: COLORS.text, fontSize: 18, fontWeight: '900', marginTop: 12 },
   podiumMeta: { color: COLORS.muted, fontSize: 13, marginTop: 4 },
   podiumScore: { fontSize: 22, fontWeight: '900', marginTop: 12 },
+  seasonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  seasonTile: {
+    minWidth: 142,
+    flexGrow: 1,
+    backgroundColor: COLORS.panel,
+    borderColor: COLORS.border,
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 14,
+  },
+  seasonTileLabel: { color: COLORS.secondary, fontSize: 10, fontWeight: '800', letterSpacing: 1.4 },
+  seasonTileValue: { color: COLORS.text, fontSize: 18, fontWeight: '900', marginTop: 8 },
+  playerSpotlight: {
+    backgroundColor: 'rgba(12, 24, 18, 0.92)',
+    borderColor: 'rgba(99, 249, 141, 0.22)',
+    borderWidth: 1,
+    borderRadius: 24,
+    padding: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 14,
+  },
+  spotlightLabel: { color: COLORS.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1.6 },
+  spotlightTitle: { color: COLORS.text, fontSize: 22, fontWeight: '900', marginTop: 8 },
+  spotlightMeta: { color: COLORS.muted, fontSize: 13, lineHeight: 18, marginTop: 6 },
+  spotlightScore: { color: COLORS.accent, fontSize: 20, fontWeight: '900' },
+  modeRail: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    backgroundColor: COLORS.panel,
+    borderColor: COLORS.border,
+    borderWidth: 1,
+    borderRadius: 22,
+    padding: 10,
+  },
+  modeButton: {
+    minWidth: 86,
+    flexGrow: 1,
+    alignItems: 'center',
+    borderRadius: 16,
+    paddingVertical: 12,
+    backgroundColor: COLORS.panelMuted,
+  },
+  modeButtonActive: { backgroundColor: COLORS.accent },
+  modeButtonText: { color: COLORS.muted, fontSize: 13, fontWeight: '900' },
+  modeButtonTextActive: { color: '#06120a' },
   panel: {
     backgroundColor: COLORS.panel,
     borderColor: COLORS.border,
@@ -212,6 +379,20 @@ const styles = StyleSheet.create({
   entryName: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   entryMeta: { color: COLORS.muted, fontSize: 12, marginTop: 4 },
   entryXp: { color: COLORS.secondary, fontSize: 14, fontWeight: '900' },
+  rivalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: 'rgba(35, 27, 10, 0.66)',
+    borderRadius: 18,
+    padding: 14,
+  },
+  rivalPulse: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: COLORS.warning,
+  },
   challengeCard: {
     backgroundColor: COLORS.panelMuted,
     borderRadius: 18,

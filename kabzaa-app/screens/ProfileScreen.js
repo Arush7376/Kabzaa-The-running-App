@@ -142,6 +142,25 @@ export default function ProfileScreen() {
           <StatTile label="Runs" value={`${data.totals.total_runs}`} />
           <StatTile label="Distance" value={formatDistance(data.totals.total_distance)} />
           <StatTile label="Tiles" value={`${data.totals.total_tiles}`} />
+          <StatTile label="Leaderboard" value={`#${data.leaderboard_position || '--'}`} />
+          <StatTile label="Streak" value={`${data.totals.streak_days || 0} days`} />
+          <StatTile label="Longest run" value={formatDistance(data.totals.longest_run || 0)} />
+        </View>
+
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Weekly momentum</Text>
+          <View style={styles.momentumRow}>
+            <View style={styles.momentumTile}>
+              <Text style={styles.momentumLabel}>Distance this week</Text>
+              <Text style={styles.momentumValue}>
+                {formatDistance(data.totals.weekly_distance || 0)}
+              </Text>
+            </View>
+            <View style={styles.momentumTile}>
+              <Text style={styles.momentumLabel}>Runs this week</Text>
+              <Text style={styles.momentumValue}>{data.totals.weekly_runs || 0}</Text>
+            </View>
+          </View>
         </View>
 
         <View style={styles.panel}>
@@ -272,6 +291,16 @@ const styles = StyleSheet.create({
   },
   statTileLabel: { color: COLORS.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 1.4 },
   statTileValue: { color: COLORS.text, fontSize: 22, fontWeight: '900', marginTop: 8 },
+  momentumRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  momentumTile: {
+    minWidth: 150,
+    flexGrow: 1,
+    backgroundColor: COLORS.panelMuted,
+    borderRadius: 18,
+    padding: 14,
+  },
+  momentumLabel: { color: COLORS.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 1.4 },
+  momentumValue: { color: COLORS.accent, fontSize: 22, fontWeight: '900', marginTop: 8 },
   panel: {
     backgroundColor: COLORS.panel,
     borderColor: COLORS.border,
