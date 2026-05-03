@@ -10,7 +10,7 @@ This document explains how the Django REST Framework backend works for **KABZAA 
 2. While running, the client sends **GPS coordinates** repeatedly → each pair is stored as a `LocationPoint` linked to that session.
 3. Each coordinate is converted into a **tile** `(lat_index, lng_index)` using a fixed grid. That tile’s **owner** is set to the current user (create tile if new, or update owner if it already exists).
 
-Authentication uses **HTTP Basic Auth** (username + password). Every API call must identify the user so runs and tiles are scoped correctly.
+Authentication uses **DRF token auth**. Every API call must identify the user so runs and tiles are scoped correctly.
 
 ---
 
@@ -76,7 +76,7 @@ Example: near Delhi `lat=28.6139`, `lng=77.2090` with `0.001` gives indices like
 ### Step A — Start a run
 
 - **Request:** `POST /api/start-run/`  
-- **Auth:** Basic (valid user).  
+- **Auth:** `Authorization: Token <token>`.
 - **Body:** empty is fine.
 
 **Server:** creates `RunSession` for `request.user`, returns:
@@ -92,7 +92,7 @@ Status **201**. The client must keep `session_id` for the next steps.
 ### Step B — Send GPS (repeat many times)
 
 - **Request:** `POST /api/update-location/`  
-- **Auth:** Basic.  
+- **Auth:** `Authorization: Token <token>`.
 - **Body (JSON):** `session_id`, `latitude`, `longitude`
 
 **Server:**
@@ -114,7 +114,7 @@ Returns **200** with a short message and tile info (indices + `owner_id`).
 ### Step C — End the run
 
 - **Request:** `POST /api/end-run/`  
-- **Auth:** Basic.  
+- **Auth:** `Authorization: Token <token>`.
 - **Body (JSON):** `session_id`
 
 **Server:** finds the session for this user, sets `end_time` to “now”, saves. Returns **200**. Further `update-location` calls for that session are rejected (**400**).
@@ -125,7 +125,7 @@ Returns **200** with a short message and tile info (indices + `owner_id`).
 
 | Situation | Typical response |
 |-----------|------------------|
-| No / wrong Basic Auth | **401** |
+| No / wrong token auth | **401** |
 | Missing `session_id` where required | **400** |
 | `session_id` not an integer | **400** |
 | Session not found or not owned by user | **404** |
@@ -142,11 +142,14 @@ Errors are JSON objects with an `error` or `detail` field depending on DRF vs. c
 From the `backend` directory (where `manage.py` lives):
 
 ```text
+$env:DJANGO_DEBUG="true"
 python manage.py migrate
 python manage.py runserver
 ```
 
 Base URL: `http://127.0.0.1:8000/`
+
+For production, set `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, and `DJANGO_CORS_ALLOWED_ORIGINS` explicitly. Secure cookies, HSTS, and HTTPS redirects are enabled by default when `DJANGO_DEBUG` is false.
 
 Endpoints:
 
@@ -154,13 +157,13 @@ Endpoints:
 - `POST /api/update-location/`
 - `POST /api/end-run/`
 
-Use Basic Auth in Postman, or PowerShell `Invoke-RestMethod` with an `Authorization: Basic ...` header and JSON bodies for update/end.
+Create or log in a user through `/api/register/` or `/api/login/`, then use `Authorization: Token <token>` in Postman or PowerShell requests.
 
 ---
 
 ## 8. Design notes
 
-- **Why Basic Auth by default?** It is simple for development and tools; production often switches to token/JWT — the view logic (sessions, points, tiles) stays the same.  
+- **Why token auth by default?** It avoids sending the username and password with every API request while keeping the mobile client simple.
 - **Why `update_or_create` on Tile?** It matches the product rule: one owner per grid cell; last write wins when someone runs through that cell.  
 - **Serializers** are defined for all models so you can later add list/detail APIs or nested responses without rewriting model code.
 
