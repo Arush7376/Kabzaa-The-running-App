@@ -10,6 +10,13 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from .anti_cheat import (
+    RunValidator,
+    apply_validation_result,
+    build_location_metadata,
+    create_device_signal,
+    get_or_create_trust_profile,
+)
 from .models import LocationPoint, RunSession, Tile
 from .utils import get_tile
 
@@ -74,7 +81,9 @@ def get_user_streak_days(user):
 
 
 def get_user_totals(user):
-    sessions = RunSession.objects.filter(user=user)
+    sessions = RunSession.objects.filter(user=user).exclude(
+        validation_status=RunSession.ValidationStatus.REJECTED
+    )
     total_distance = sessions.aggregate(total=Sum("distance")).get("total") or 0.0
     total_runs = sessions.count()
     total_tiles = Tile.objects.filter(owner=user).count()
@@ -217,6 +226,9 @@ def serialize_session(session):
         "duration_seconds": duration_seconds,
         "average_speed_kmh": average_speed,
         "points_count": session.points.count(),
+        "validation_status": session.validation_status,
+        "validation_score": session.validation_score,
+        "suspicious_reason": session.suspicious_reason,
     }
 
 
@@ -236,6 +248,9 @@ def build_session_summary(session):
         "owned_tiles": owned_tiles,
         "xp": totals["xp"],
         "rank": totals["rank"],
+        "validation_status": session.validation_status,
+        "validation_score": session.validation_score,
+        "suspicious_reason": session.suspicious_reason,
         "achievements": build_achievements(session.user, totals),
     }
 
@@ -243,8 +258,22 @@ def build_session_summary(session):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def start_run(request):
-    session = RunSession.objects.create(user=request.user)
-    return Response({"session_id": session.id}, status=status.HTTP_201_CREATED)
+    trust_profile = get_or_create_trust_profile(request.user)
+    session = RunSession.objects.create(
+        user=request.user,
+        trust_score_snapshot=trust_profile.score,
+    )
+    device_signal = create_device_signal(session, request.data)
+    validation_result = RunValidator().validate_start(session, device_signal)
+    apply_validation_result(session, validation_result)
+    return Response(
+        {
+            "session_id": session.id,
+            "validation_status": session.validation_status,
+            "trust_score": session.trust_score_snapshot,
+        },
+        status=status.HTTP_201_CREATED,
+    )
 
 
 @api_view(["POST"])
@@ -291,35 +320,79 @@ def update_location(request):
         )
 
     last_point = session.points.order_by("-timestamp").first()
+    metadata = build_location_metadata(request.data)
+    server_received_at = timezone.now()
+    distance_delta = 0.0
+    elapsed_seconds = 0.0
+
+    if last_point:
+        distance_delta = calculate_distance_meters(
+            last_point.latitude,
+            last_point.longitude,
+            latitude,
+            longitude,
+        )
+        elapsed_seconds = max(
+            (server_received_at - last_point.timestamp).total_seconds(),
+            0.0,
+        )
+
+    validation_result = RunValidator().validate_location(
+        session,
+        last_point,
+        metadata,
+        distance_delta,
+        elapsed_seconds,
+    )
 
     with transaction.atomic():
-        LocationPoint.objects.create(session=session, latitude=latitude, longitude=longitude)
+        point = LocationPoint.objects.create(
+            session=session,
+            latitude=latitude,
+            longitude=longitude,
+            client_timestamp=metadata["client_timestamp"],
+            accuracy_meters=metadata["accuracy_meters"],
+            altitude_meters=metadata["altitude_meters"],
+            speed_mps=metadata["speed_mps"],
+            heading_degrees=metadata["heading_degrees"],
+            mock_location=metadata["mock_location"],
+            validation_metadata={
+                "server_speed_mps": round(validation_result.speed_mps, 2),
+                "distance_delta_meters": round(distance_delta, 2),
+                "elapsed_seconds": round(elapsed_seconds, 2),
+            },
+        )
 
-        if last_point:
-            session.distance += calculate_distance_meters(
-                last_point.latitude,
-                last_point.longitude,
-                latitude,
-                longitude,
-            )
+        if last_point and validation_result.allow_distance:
+            session.distance += distance_delta
             session.save(update_fields=["distance"])
 
-        lat_index, lng_index = get_tile(latitude, longitude)
-        tile, _ = Tile.objects.update_or_create(
-            lat_index=lat_index,
-            lng_index=lng_index,
-            defaults={"owner": request.user},
-        )
+        tile = None
+        if validation_result.allow_tile_capture:
+            lat_index, lng_index = get_tile(latitude, longitude)
+            tile, _ = Tile.objects.update_or_create(
+                lat_index=lat_index,
+                lng_index=lng_index,
+                defaults={"owner": request.user},
+            )
+
+        apply_validation_result(session, validation_result, point=point)
 
     return Response(
         {
             "message": "Location updated successfully.",
             "distance_meters": round(session.distance, 2),
-            "tile": {
-                "lat_index": tile.lat_index,
-                "lng_index": tile.lng_index,
-                "owner_id": tile.owner_id,
-            },
+            "validation_status": session.validation_status,
+            "validation_score": session.validation_score,
+            "tile": (
+                {
+                    "lat_index": tile.lat_index,
+                    "lng_index": tile.lng_index,
+                    "owner_id": tile.owner_id,
+                }
+                if tile
+                else None
+            ),
         },
         status=status.HTTP_200_OK,
     )
@@ -427,8 +500,6 @@ def territory_overview(request):
     )
 
 
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
 def build_leaderboard_entries():
     users = User.objects.all()
     entries = []

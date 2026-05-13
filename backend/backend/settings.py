@@ -100,3 +100,33 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],
 }
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "structured": {
+            "format": "%(asctime)s %(levelname)s %(name)s %(message)s user_id=%(user_id)s session_id=%(session_id)s status=%(status)s rules=%(rules)s trust_score=%(trust_score)s",
+        },
+        "standard": {
+            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+        },
+        "anti_cheat_console": {
+            "class": "logging.StreamHandler",
+            "formatter": "structured",
+        },
+    },
+    "loggers": {
+        "api.anti_cheat": {
+            "handlers": ["anti_cheat_console"],
+            "level": os.environ.get("ANTI_CHEAT_LOG_LEVEL", "WARNING"),
+            "propagate": False,
+        },
+    },
+}
