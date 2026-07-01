@@ -1,105 +1,112 @@
-# KABZAA
+# 🏃‍♂️ KABZAA (কবজা) — Territory-Capture Running App
 
-KABZAA is a territory-capture running app. Players move through the real world, record GPS runs, and convert location updates into owned map tiles. This repository contains a Django REST backend plus Expo React Native clients for the gameplay and UI experiments.
+Welcome to **KABZAA**, a gamified, territory-capture fitness application. Players navigate the real world, record GPS-tracked runs, and conquer map grid tiles to claim territory. 
 
-## What the app does
+This repository houses a modular **Django REST API Backend** alongside **Expo React Native** mobile clients built for gameplay, animations, and social features.
 
-- Tracks active runs with live GPS updates
-- Draws the runner path on the map in real time
-- Captures territory tiles as the user moves
-- Supports signup, login, profile, history, and leaderboard flows
-- Shows a live map marker with a pseudo-3D humanoid runner avatar in the prototype client
+---
 
-## Repository layout
+## 🌟 Key Features & Gameplay Mechanics
 
-- `backend/`: Django REST API, auth, run sessions, location points, tile ownership, and local SQLite development setup
-- `frontend/`: Expo React Native prototype focused on the live run experience, map rendering, tile feedback, and the humanoid runner marker
-- `kabzaa-app/`: separate Expo React Native app workspace for the broader product flow
+*   📍 **Live Route Tracking**: Streams location data from the mobile device to render real-time GPS routes on a dark-themed gameplay map.
+*   🟩 **Territory Capture Engine**: Converts latitude/longitude coordinates into localized grid indices, granting players tile ownership.
+*   🏃‍♂️ **Animated Runner Avatar**: Features a custom-designed, glow-effect, humanoid avatar that dynamically strides, bobs, and rotates with the direction of travel.
+*   🛡️ **Advanced Anti-Cheat System**: Server-side validation that inspects runs at three layers:
+    *   **Device Checks**: Rejects starts from emulators or mock location providers.
+    *   **GPS Speed Verification**: Filters out unrealistic speeds (warnings at $\ge$ 8.0 m/s; tile-capture blocks at $\ge$ 12.5 m/s).
+    *   **Teleportation Blocker**: Detects jumps $\ge$ 250m at speeds $\ge$ 18 m/s.
+    *   **User Trust Scoring**: Dynamically adjusts a player's trust profile (0–100) based on location reliability.
+*   🏆 **Competitive Leaderboards**: Supports custom ranking filters (XP, total tiles, distance, weekly) alongside streak counters, challenges (e.g., weekly distance), achievements ("Heat Streak", "Long Signal"), and dynamically generated rival suggestions.
 
-## Current UX highlights
+---
 
-- Live route polyline while a run is active
-- Dark map presentation for active gameplay
-- Tile badge overlay showing the latest captured territory index
-- Animated humanoid runner marker that bobs, strides, glows, and rotates with the direction of travel
-- Web fallback screen for map previews when native maps are unavailable
+## 📂 Repository Layout
 
-## Tech stack
+```yaml
+├── backend/            # Django REST API, Token Auth, Run Sessions, & Anti-Cheat Engine
+│   ├── api/            # App models (UserTrustProfile, RunSession, etc.), serializers, & views
+│   └── backend/        # Security hardening settings, database configs, and custom CORS middleware
+├── kabzaa-app/         # The complete product App workspace (Auth, Profile, Leaderboard, Territory)
+└── frontend/          # High-fidelity prototype playground focused on Map rendering and Avatar UX
+```
 
-- Mobile clients: Expo, React Native, React Navigation, React Native Maps
-- Backend: Django, Django REST Framework, token authentication
-- Location: Expo Location
-- Storage: SQLite for local development
+---
 
-## Getting started
+## 🛠️ Technical Stack
 
-### 1. Start the backend
+*   **Mobile Clients**: Expo SDK 54, React Native, React Navigation, React Native Maps
+*   **Backend Services**: Python 3, Django, Django REST Framework (DRF), Token Authentication
+*   **Location Services**: Expo Location API
+*   **Database**: SQLite (configured for local development)
 
-Run the API from `backend/`:
+---
 
+## 🚀 Getting Started
+
+### 1. Run the Backend API
+Navigate to the `backend/` directory, set up your environment, and spin up the server:
 ```bash
+cd backend
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py runserver
 ```
+The server will start at `http://127.0.0.1:8000`.
 
-The backend is available at `http://127.0.0.1:8000`.
-
-### 2. Start the prototype mobile client
-
-Run the prototype client from `frontend/`:
-
+### 2. Run the Main App
+Configure the client to point to your local or tunneled server IP in `kabzaa-app/app.json`. Then start the Expo packager:
 ```bash
+cd kabzaa-app
 npm install
 npm start
 ```
+Use **Expo Go** or an emulator (iOS/Android) to open and test the application.
 
-Use Expo Go or an emulator to open the app on Android or iOS. Web can be used for previewing layout and fallback behavior.
+---
 
-### 3. Start the app workspace
+## 📡 Core API Flow
 
-If you want to work on the parallel app workspace, run from `kabzaa-app/`:
+A typical run tracking session moves through the following sequence:
 
-```bash
-npm install
-npm start
+```mermaid
+sequenceDiagram
+    autonumber
+    Participant Mobile as React Native App
+    Participant Server as Django Backend
+    
+    Mobile->>Server: POST /api/auth/login/ (Obtain Token)
+    Server-->>Mobile: Return Auth Token
+    Mobile->>Server: POST /api/start-run/ (Send Device Integrity Signals)
+    Server-->>Mobile: Returns run session_id & initial Validation Status
+    loop Active Run Tracking (Interval)
+        Mobile->>Server: POST /api/update-location/ (Send GPS Coordinates & Speed)
+        Server->>Server: Execute RunValidator (Anti-Cheat Checks)
+        Server-->>Mobile: Return updated distance & captured tile coordinates
+    end
+    Mobile->>Server: POST /api/end-run/ (Complete Run Session)
+    Server-->>Mobile: Return Run Summary (XP, Rank, earned Achievements)
 ```
 
-### 4. Configure the API URL
+---
 
-The mobile app resolves the API URL in this order:
+## 📦 Building and Packaging (APK / iOS)
 
-1. `EXPO_PUBLIC_API_URL`
-2. `expo.extra.apiUrl`
-3. The Expo host machine IP
-4. Local defaults such as `http://127.0.0.1:8000`
+The application configurations are pre-defined in `eas.json` for building binaries:
+*   **Android APK**: Generate an installable standalone package via EAS build:
+    ```bash
+    npx eas-cli build --platform android --profile preview
+    ```
+*   **iOS IPA**: Build using EAS (requires an Apple Developer Account):
+    ```bash
+    npx eas-cli build --platform ios
+    ```
 
-If you are testing on a physical device, set `EXPO_PUBLIC_API_URL` to a backend host reachable from that device.
+---
 
-## Gameplay/API flow
+## 📈 Roadmap
 
-Core backend endpoints include:
-
-- `POST /api/auth/register/`
-- `POST /api/auth/login/`
-- `POST /api/start-run/`
-- `POST /api/update-location/`
-- `POST /api/end-run/`
-- `GET /api/profile/`
-- `GET /api/run-history/`
-- `GET /api/territory/`
-- `GET /api/leaderboard/`
-
-Typical active run flow:
-
-1. Start a run session.
-2. Stream GPS points from the device.
-3. Send location updates to the backend on an interval.
-4. Convert coordinates into territory tile captures.
-5. End the run and persist the session summary.
-
-## Development notes
-
-- `frontend/` currently contains the most visible map/avatar UX work.
-- `backend/BACKEND_WORKFLOW.md` documents the backend flow and data model in more detail.
-- Development artifacts such as logs, `node_modules`, Expo output, virtual environments, and SQLite files are ignored where appropriate.
+1. [x] Server-side Anti-Cheat framework and models.
+2. [x] Integrated Leaderboards and Streak challenges.
+3. [ ] Mobile-client integration of `DeviceSignal` integrity checks at run start.
+4. [ ] Production deployment setups (PostgreSQL database & Dockerizing).
+5. [ ] Interactive maps with color-coded region boundaries based on captured tiles.
