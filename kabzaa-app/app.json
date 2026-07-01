@@ -14,12 +14,14 @@
     },
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.kabzaa.app",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "KABZAA needs your location to track runs and capture territory on the map.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "KABZAA uses your location while you run to record your route."
       }
     },
     "android": {
+      "package": "com.kabzaa.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#07080d"
