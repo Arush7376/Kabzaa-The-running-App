@@ -80,16 +80,19 @@ export async function loginUser(username, password) {
   return data;
 }
 
-export async function startRun() {
-  const { data } = await api.post('/api/start-run/', {});
+export async function startRun(deviceSignal = {}) {
+  const { data } = await api.post('/api/start-run/', {
+    device_signal: deviceSignal,
+  });
   return data;
 }
 
-export async function updateLocation(sessionId, latitude, longitude) {
+export async function updateLocation(sessionId, latitude, longitude, metadata = {}) {
   const { data } = await api.post('/api/update-location/', {
     session_id: sessionId,
     latitude,
     longitude,
+    ...metadata,
   });
   return data;
 }
