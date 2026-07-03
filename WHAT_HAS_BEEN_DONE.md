@@ -38,6 +38,13 @@
   - longest run
   - weekly momentum panel
 
+## Client Anti-Cheat Integration
+
+- Integrated client-side anti-cheat mechanisms:
+  - Generates device signals (platform, app version, emulator detection, developer mode status) at run start.
+  - Streams full GPS metadata (accuracy, altitude, speed, heading, client timestamp, mocked provider state) on location updates.
+  - Safe error fallbacks with zero-crash try-catch blocks for web simulation and offline modes.
+
 ## Existing Features Preserved
 
 - Token auth flow
