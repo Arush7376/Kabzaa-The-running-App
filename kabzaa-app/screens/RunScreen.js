@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
+import Constants from 'expo-constants';
 import HUDOverlay from '../components/HUDOverlay';
 import MapViewComponent from '../components/MapViewComponent';
 import * as api from '../services/api';
@@ -106,6 +107,36 @@ function createDemoPoint(step) {
   };
 }
 
+function getDeviceSignal() {
+  try {
+    const platform = Platform.OS;
+    const appVersion = Constants.expoConfig?.version || '1.0.0';
+    const isEmulator = Constants.isDevice === false;
+    const developerMode = typeof __DEV__ !== 'undefined' ? __DEV__ : false;
+
+    return {
+      platform,
+      app_version: appVersion,
+      device_id_hash: '',
+      is_emulator: isEmulator,
+      is_mock_location: false,
+      developer_mode: developerMode,
+      integrity_level: 'basic',
+    };
+  } catch (error) {
+    console.warn('Failed to build device signal', error);
+    return {
+      platform: Platform.OS,
+      app_version: '1.0.0',
+      device_id_hash: '',
+      is_emulator: false,
+      is_mock_location: false,
+      developer_mode: false,
+      integrity_level: 'basic',
+    };
+  }
+}
+
 function AvatarFallbackCard() {
   return (
     <View style={styles.avatarFallbackCard}>
@@ -154,9 +185,24 @@ export default function RunScreen({ navigation }) {
   const initialRegionSetRef = useRef(false);
   const demoStepRef = useRef(0);
 
-  const pushCoordinate = useCallback((latitude, longitude) => {
+  const pushCoordinate = useCallback((latitude, longitude, extraData = null) => {
     const nextCoordinate = { latitude, longitude };
-    latestCoordinateRef.current = nextCoordinate;
+    
+    if (extraData) {
+      latestCoordinateRef.current = {
+        latitude,
+        longitude,
+        accuracy: extraData.accuracy ?? null,
+        altitude: extraData.altitude ?? null,
+        speed: extraData.speed ?? null,
+        heading: extraData.heading ?? null,
+        mocked: extraData.mocked ?? false,
+        timestamp: extraData.timestamp ?? Date.now(),
+      };
+    } else {
+      latestCoordinateRef.current = nextCoordinate;
+    }
+    
     setCurrentCoordinate(nextCoordinate);
 
     if (!initialRegionSetRef.current) {
@@ -208,10 +254,23 @@ export default function RunScreen({ navigation }) {
     }
 
     try {
+      const metadata = {};
+      if (coordinate.accuracy !== undefined) {
+        metadata.accuracy = coordinate.accuracy;
+        metadata.altitude = coordinate.altitude;
+        metadata.speed = coordinate.speed;
+        metadata.heading = coordinate.heading;
+        metadata.mock_location = coordinate.mocked;
+        metadata.client_timestamp = coordinate.timestamp
+          ? new Date(coordinate.timestamp).toISOString()
+          : new Date().toISOString();
+      }
+
       const response = await api.updateLocation(
         currentSessionId,
         coordinate.latitude,
         coordinate.longitude,
+        metadata,
       );
 
       if (response?.tile && mountedRef.current) {
@@ -300,10 +359,23 @@ export default function RunScreen({ navigation }) {
       try {
         const coordinate = latestCoordinateRef.current;
         if (sessionIdRef.current && coordinate && !demoMode && !offlineMode) {
+          const metadata = {};
+          if (coordinate.accuracy !== undefined) {
+            metadata.accuracy = coordinate.accuracy;
+            metadata.altitude = coordinate.altitude;
+            metadata.speed = coordinate.speed;
+            metadata.heading = coordinate.heading;
+            metadata.mock_location = coordinate.mocked;
+            metadata.client_timestamp = coordinate.timestamp
+              ? new Date(coordinate.timestamp).toISOString()
+              : new Date().toISOString();
+          }
+
           const response = await api.updateLocation(
             sessionIdRef.current,
             coordinate.latitude,
             coordinate.longitude,
+            metadata,
           );
 
           if (response?.tile && mountedRef.current) {
@@ -391,7 +463,8 @@ export default function RunScreen({ navigation }) {
         setStatusText('Opening run session');
 
         try {
-          const runSession = await api.startRun();
+          const deviceSignal = getDeviceSignal();
+          const runSession = await api.startRun(deviceSignal);
           if (mountedRef.current) {
             setSessionId(runSession.session_id);
             sessionIdRef.current = runSession.session_id;
@@ -440,7 +513,18 @@ export default function RunScreen({ navigation }) {
         }
 
         setStatusText(offlineMode ? 'GPS lock acquired in offline mode' : 'GPS lock acquired');
-        pushCoordinate(firstPosition.coords.latitude, firstPosition.coords.longitude);
+        pushCoordinate(
+          firstPosition.coords.latitude,
+          firstPosition.coords.longitude,
+          {
+            accuracy: firstPosition.coords.accuracy,
+            altitude: firstPosition.coords.altitude,
+            speed: firstPosition.coords.speed,
+            heading: firstPosition.coords.heading,
+            mocked: firstPosition.mocked || firstPosition.coords.mocked,
+            timestamp: firstPosition.timestamp,
+          }
+        );
         await syncLatestLocation();
 
         watchRef.current = await Location.watchPositionAsync(
@@ -453,7 +537,18 @@ export default function RunScreen({ navigation }) {
             distanceInterval: GPS_DISTANCE_INTERVAL_M,
           },
           (locationUpdate) => {
-            pushCoordinate(locationUpdate.coords.latitude, locationUpdate.coords.longitude);
+            pushCoordinate(
+              locationUpdate.coords.latitude,
+              locationUpdate.coords.longitude,
+              {
+                accuracy: locationUpdate.coords.accuracy,
+                altitude: locationUpdate.coords.altitude,
+                speed: locationUpdate.coords.speed,
+                heading: locationUpdate.coords.heading,
+                mocked: locationUpdate.mocked || locationUpdate.coords.mocked,
+                timestamp: locationUpdate.timestamp,
+              }
+            );
           },
         );
 
