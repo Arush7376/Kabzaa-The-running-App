@@ -1,4 +1,4 @@
-# 🏃‍♂️ KABZAA (কবজা) — Territory-Capture Running App
+# 🏃‍♂️ KABZAA  — Territory-Capture Running App
 
 Welcome to **KABZAA**, a gamified, territory-capture fitness application. Players navigate the real world, record GPS-tracked runs, and conquer map grid tiles to claim territory. 
 
